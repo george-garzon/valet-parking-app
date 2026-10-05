@@ -190,3 +190,61 @@ npm run staff:reset-pin -- owner-admin
 This local command resets an existing active account, shows the new PIN once, clears its employee-specific attempt limit, and revokes its sessions. Protect server access and database backups: local operators can reset credentials. Staff creation, changes, PIN resets, and successful sign-ins record basic access events in `staff_audit`; a full ticket/action audit interface is not implemented.
 
 Authentication and session decisions use the [OWASP authentication guidance](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html) and [session guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html) as references. PIN-only sign-in is intended for controlled staff devices and requires HTTPS for real deployments. MFA, SSO, automatic idle locking, broad API abuse limits, and independent production security review remain future work. A generated PIN does not provide offline authentication or offline synchronization; preprint fallback supplies before an outage.
+
+## Docker and Docker Compose
+
+Install Docker with Compose and start its engine (Docker Desktop on macOS). From the project directory, create `.env.local` if it does not already exist, edit the business settings, and build/start the container:
+
+```sh
+# First setup only; do not overwrite an existing .env.local.
+cp .env.example .env.local
+
+docker compose up -d --build
+```
+
+Open http://127.0.0.1:3000. If the local dev server already uses port 3000:
+
+```sh
+PORTER_HTTP_PORT=3001 docker compose up -d --build
+```
+
+Then open http://127.0.0.1:3001. Leave `PUBLIC_APP_URL` blank for local testing, or set it to the actual URL used by browsers; staff Origin checks must match. The published port binds only to the host's loopback address. Remote staff/guest access requires an appropriately configured HTTPS reverse proxy; inside the container the app listens on `0.0.0.0:3000`.
+
+Create the first administrator in the container's database:
+
+```sh
+docker compose exec app node --conditions=react-server admin-tools/create-admin.mjs owner-admin "Owner Name"
+```
+
+Record the generated PIN securely, sign in, and add employees through **Employees**. For authorized local PIN recovery:
+
+```sh
+docker compose exec app node --conditions=react-server admin-tools/reset-staff-pin.mjs owner-admin
+```
+
+These bundled tools read the container environment injected by Compose. There is no `.env.local` inside the image; the host npm setup commands apply to host installations, while the commands above apply to Docker.
+
+The multi-stage Dockerfile builds Next.js standalone output on Node 24 and installs SQLite's native dependency inside Linux for the selected image architecture. It excludes host `node_modules`, databases, and private environment files from the build context. The runtime runs as the non-root `node` user, includes public/static assets and administrator tools, and does not include the builder's compiler toolchain.
+
+Compose stores databases in the named `valet-storage` volume at `/app/storage`, overriding any host `VALET_STORAGE` setting. This includes tickets, employee accounts, sessions, photos, and business subdirectories. Restarts, image rebuilds, and `docker compose down` preserve this volume. **`docker compose down -v` deletes the volume and its records.** Host `storage/` data is not imported automatically; a new volume needs its own initial administrator unless an existing database is migrated.
+
+For a simple filesystem backup, stop the app first so SQLite files are not changing:
+
+```sh
+mkdir -p backups
+docker compose stop app
+docker compose cp app:/app/storage ./backups/storage
+docker compose start app
+```
+
+Use a fresh backup destination each time. Protect backups and saved PINs, and test restoration before relying on them. Restoring/migrating files into a volume must retain ownership readable/writable by the container's `node` user (UID/GID 1000). Keep one application instance per business database; this Compose setup does not provide database replication or automatic failover.
+
+Useful maintenance commands:
+
+```sh
+docker compose ps
+docker compose logs -f app
+docker compose up -d --build  # rebuild after code changes
+```
+
+After editing `.env.local`, run `docker compose up -d --force-recreate` to reload the container environment; a plain restart retains the old environment. The health check verifies the authentication endpoint responds; it does not certify database access, Wi-Fi coverage, physical printing, Twilio delivery, or Stripe settlement. Runtime environment values are not baked into the image. The vehicle catalog comes from the checked-in snapshot; refresh it on the host and rebuild when needed.
