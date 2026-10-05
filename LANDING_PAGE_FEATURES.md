@@ -2,6 +2,8 @@
 
 This document inventories the app's implemented features for a future landing page. It describes product capabilities, not a promise that every optional feature is enabled in a particular installation. Configuration lives in `.env.local`; setup details are in [README.md](README.md). No credentials or private guest data belong in landing page content.
 
+For property rollout, Wi-Fi and garage coverage, guest connectivity, and outage planning, see [CLIENT_IMPLEMENTATION_GUIDE.md](CLIENT_IMPLEMENTATION_GUIDE.md).
+
 ## Product positioning
 
 **Porter brings vehicle check-in, valet dispatch, parking availability, and digital guest tickets into one workflow.**
@@ -16,12 +18,14 @@ Potential supporting copy: **Check in vehicles, track lot capacity, coordinate r
 
 | Feature | Availability | Guest or operator benefit |
 | --- | --- | --- |
+| Employee roles and PIN sign-in | Built in | Control staff access and manage employee accounts. |
 | Operations dashboard | Built in | See vehicles on site, arrivals, and retrieval requests together. |
 | Vehicle check-in | Built in | Capture guest, vehicle, and handoff details in one record. |
 | Vehicle inventory and search | Built in | Find tickets and the information needed for retrieval. |
 | Retrieval and dispatch workflow | Built in | Follow each car from parked through completed handoff. |
 | Mobile worker station | Built in | Give attendants focused controls for everyday tasks. |
 | Digital guest tickets | Built in | Let guests view status and request pickup from a private link. |
+| Physical two-part tickets | Built in | Keep a matching key stub and guest claim ticket, with printable outage supplies. |
 | Ticket QR codes | Built in | Open or download a QR code linked to the guest ticket. |
 | Hotel room linking | Hotel configuration | Connect a guest's ticket to an optional room or suite label. |
 | Business branding | Configurable | Use the operator's name, logo, accent color, and pickup location. |
@@ -32,6 +36,23 @@ Potential supporting copy: **Check in vehicles, track lot capacity, coordinate r
 | Online payments | Optional Stripe configuration | Offer hosted parking-fee checkout before retrieval. |
 | Guest tips | Optional with online payments | Let guests choose a preset or custom tip. |
 | Persistent business records | Built in | Keep tickets and saved photos across server restarts. |
+
+## Employee access and roles
+
+- Individual employee IDs with generated private 8-digit PINs.
+- Administrator, manager, and attendant roles.
+- Administrators create users of all roles; managers manage attendants.
+- Employee management screen to create accounts, reset PINs, and deactivate/reactivate access.
+- PINs shown once and stored as salted hashes.
+- Server-side sessions protect staff inventory, ticket changes, photos, printing, and user management.
+- Revocation of existing sessions when PINs, roles, or account access change.
+- Staff sign-out/lock action and eight-hour session expiry.
+- Persistent sign-in attempt limits and basic access-event records.
+- Guest tickets remain usable without employee sign-in.
+
+**Landing page angle:** “Give each employee their own access to the valet workflow.”
+
+The first administrator is created with a local setup command. This is PIN-only staff authentication, not MFA or SSO. Full ticket audit reporting, automatic idle lock, and granular per-ticket/financial permissions are not implemented.
 
 ## Operations dashboard
 
@@ -109,6 +130,20 @@ This is a mobile-friendly web experience; a native mobile app and offline operat
 **Landing page angle:** “Your guest's car, a browser link away.”
 
 The link is a bearer credential: anyone with it can access that ticket. Do not describe it as an authenticated guest portal or guarantee a pickup time.
+
+## Physical tickets and outage supplies
+
+- Print saved tickets through the browser's printer dialog.
+- Matching ticket numbers on two halves with a dashed cut line.
+- Podium/key stub with contact, vehicle, parking, key tag, notes, and manual handoff fields.
+- Guest claim half with vehicle details, pickup location, and a digital-ticket QR link.
+- Blank fallback batches with unique matching paper references for handwriting during outages.
+- Save self-contained printable HTML for offline reprinting; embedded QR images need no external image service.
+- Manual reconciliation of paper references with digital tickets after restoration.
+
+**Landing page angle:** “Keep the keys and guest connected with matching physical tickets.”
+
+Print blank supplies before outages. Printing does not confirm payment or printer success. Paper references are not automatically saved or synchronized, and guest QR access still needs connectivity. Dedicated thermal layouts, silent printer integration, and automatic cutting are not implemented.
 
 ## Ticket QR codes
 
@@ -219,12 +254,12 @@ Configuration currently uses environment settings and a server restart. Each dep
 
 ## Future work and claims to hold back
 
-The app is currently a local prototype. Staff screens and APIs do not yet have authentication or role-based authorization. Before public use with real guest data, production work includes staff login/roles, rate limiting, HTTPS deployment, retention controls, audit logs, and suitable backup/hosting operations.
+The app is currently a local prototype. Staff screens and APIs now use employee PIN sessions and role-based employee management. Before public use with real guest data, production work includes MFA/idle lock, broader rate limiting, HTTPS deployment validation, retention controls, full ticket audit logs, and suitable backup/hosting operations.
 
 Keep the following out of “available now” landing page claims:
 
 - Production security certification, compliance guarantees, or uptime guarantees.
-- Live multi-property account management or employee permissions.
+- Live multi-property account management or granular per-ticket employee permissions.
 - Automatic plate scanning, damage detection, or vehicle-size classification.
 - Sensor-based occupancy, physical parking maps, reservations, or GPS tracking.
 - Pickup-time estimates, two-way messaging, or automatic ready texts.

@@ -1,3 +1,4 @@
+import { requireStaff } from '@/lib/staff-auth';
 import { ApiError, getTicket, photoMetadata, readPhoto, savePhoto, type PhotoKind } from '@/lib/db';
 import { getBusinessConfig } from '@/lib/config';
 
@@ -17,6 +18,7 @@ function ticketId(url: URL) {
 }
 export async function GET(request: Request) {
   try {
+    requireStaff(request);
     const url = new URL(request.url), id = ticketId(url), kind = url.searchParams.get('kind');
     if (!kind) return Response.json(photoMetadata(id), { headers });
     if (!['vehicle', 'plate'].includes(kind)) throw new ApiError('Invalid photo kind.', 422);
@@ -27,6 +29,7 @@ export async function GET(request: Request) {
 }
 export async function POST(request: Request) {
   try {
+    requireStaff(request);
     const url = new URL(request.url), id = ticketId(url);
     // Bound the whole multipart request before parsing it, including chunked bodies.
     const limit = 6 * 1024 * 1024;
@@ -43,7 +46,9 @@ export async function POST(request: Request) {
     const form = await new Request(request.url, { method: 'POST', headers: request.headers, body }).formData();
     const file = form.get('photo'), kind = form.get('kind');
     if (!(file instanceof File) || (kind !== 'vehicle' && kind !== 'plate')) throw new ApiError('Choose a vehicle or plate photo.', 422);
-    savePhoto(id, kind, Buffer.from(await file.arrayBuffer()), file.type);
+    const data = Buffer.from(await file.arrayBuffer());
+    requireStaff(request);
+    savePhoto(id, kind, data, file.type);
     return Response.json(photoMetadata(id), { headers });
   } catch (error) { return failure(error); }
 }

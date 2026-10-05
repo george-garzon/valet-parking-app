@@ -26,6 +26,7 @@ export default function TicketDialog({ ticket: t, close, advance, pending, notif
     <h2>{t.make} {t.model}</h2><p className="muted">{ticketNumber(t.id)} · {t.color} · {t.plate}</p><Badge status={t.status} />
     {business.businessType === 'hotel' && t.room_number && <p className="linked-room">Linked to Room # {t.room_number}</p>}
     <dl className="ticket-details">{[['Guest', t.guest], ['Phone', t.phone], ['Parking space', t.space], ['Key tag', t.key_tag], ['Attendant', t.attendant], ['Parking type', t.type], ['Ticket rate', money(t.rate)], ['Payment', t.payment?.paid ? `Paid ${money(t.payment.total)} · Tip ${money(t.payment.tip)}` : 'Not paid online'], ['Arrival', new Date(t.created_at).toLocaleString('en-US', { timeZone: business.timeZone })]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+    <a className="button secondary full print-ticket-link" href={`/api/print?id=${t.id}`} target="_blank" rel="noopener noreferrer">Print two-part ticket ↗</a>
     <div className="condition"><strong>Condition & notes</strong><p>{t.notes || 'No condition notes recorded.'}</p></div>
     {business.vehiclePhotosEnabled && <VehiclePhotos ticket={t} />}
     <GuestMessagePanel ticket={t} notify={notify} />

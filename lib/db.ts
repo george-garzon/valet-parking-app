@@ -29,7 +29,7 @@ function migrateRoomColumn(db: Database.Database) {
   for (const column of ['lot_id', 'spot_type']) if (!columns.some(c => c.name === column)) db.exec(`ALTER TABLE tickets ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
 
 }
-function database() {
+export function database() {
   // Runtime data is user-owned storage, not a build asset to include in file tracing.
   const base = resolve(/* turbopackIgnore: true */ process.env.VALET_STORAGE || join(process.cwd(), 'storage'));
   const businessId = getBusinessConfig().id;

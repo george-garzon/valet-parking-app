@@ -1,4 +1,5 @@
 'use client';
+import { useStaff } from './staff-gate';
 import ParkingAvailability from './parking-availability';
 import { availableSpots, spotTypes } from '@/lib/types';
 
@@ -39,6 +40,8 @@ function VehicleInventory({ tickets, open }: { tickets: Ticket[]; open: (ticket:
 }
 export default function ValetApp({ worker = false }: { worker?: boolean }) {
   const router = useRouter(), params = useSearchParams();
+  const staff = useStaff();
+  useEffect(() => { if (staff?.role === 'attendant' && !worker && !params.get('ticket')) router.replace('/worker'); }, [staff?.role, worker, router, params]);
   const business = useBusiness();
   const guestToken = worker ? '' : params.get('ticket') || '';
   const taskParam = params.get('task');
@@ -118,8 +121,8 @@ export default function ValetApp({ worker = false }: { worker?: boolean }) {
     ['exit', 'Check-ins today', today.length, 'Arrivals at this location', 'blue'],
     ['money', 'Completed ticket value', money(completed.reduce((sum, t) => sum + t.rate, 0)), 'Today · payments not connected', 'purple'],
   ] as const;
-  return <><aside className="sidebar"><Link className="brand" href="/?view=dashboard"><span className="brand-mark">{business.logoUrl ? <img className="business-logo" src={business.logoUrl} alt={business.businessName} /> : <Icon name="car" />}</span>{business.brandName}<span className="brand-dot">.</span></Link><div className="workspace"><span className="workspace-icon">{business.businessName[0]}</span><div><strong>{business.businessName}</strong><small>Valet operations</small></div></div><p className="nav-label">WORKSPACE</p><nav>{navigation.map(([id, icon, text]) => <button key={id} aria-label={text} onClick={() => navigate(id)} className={`nav-item ${view === id ? 'selected' : ''}`}><Icon name={icon} /><span>{text}</span>{id === 'vehicles' && <b>{active.length}</b>}</button>)}</nav><div className="sidebar-bottom"><div className="demo-note"><span className="live-dot" />Local MVP<small>Staff views are open for testing</small></div><div className="profile"><span className="avatar">JD</span><div><strong>Jamie Davis</strong><small>Operations manager</small></div></div></div></aside>
-    <div className="main"><header className="topbar"><div className="breadcrumb">Workspace <span>/</span> <strong>{navigation.find(([id]) => id === view)?.[2]}</strong></div><div className="topbar-right"><span className="live"><i />Local data</span><span className="topbar-date">{new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: business.timeZone })}</span><span className="avatar small">JD</span></div></header>
+  return <><aside className="sidebar"><Link className="brand" href="/?view=dashboard"><span className="brand-mark">{business.logoUrl ? <img className="business-logo" src={business.logoUrl} alt={business.businessName} /> : <Icon name="car" />}</span>{business.brandName}<span className="brand-dot">.</span></Link><div className="workspace"><span className="workspace-icon">{business.businessName[0]}</span><div><strong>{business.businessName}</strong><small>Valet operations</small></div></div><p className="nav-label">WORKSPACE</p><nav>{navigation.map(([id, icon, text]) => <button key={id} aria-label={text} onClick={() => navigate(id)} className={`nav-item ${view === id ? 'selected' : ''}`}><Icon name={icon} /><span>{text}</span>{id === 'vehicles' && <b>{active.length}</b>}</button>)}</nav><div className="sidebar-bottom"><div className="demo-note"><span className="live-dot" />Local MVP<small>Employee PIN access enabled</small></div><div className="profile"><span className="avatar">{staff?.name.split(' ').map(part => part[0]).slice(0, 2).join('')}</span><div><strong>{staff?.name}</strong><small>{staff?.role}</small></div></div></div></aside>
+    <div className="main"><header className="topbar"><div className="breadcrumb">Workspace <span>/</span> <strong>{navigation.find(([id]) => id === view)?.[2]}</strong></div><div className="topbar-right"><span className="live"><i />Local data</span><span className="topbar-date">{new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: business.timeZone })}</span><span className="avatar small">{staff?.name.split(' ').map(part => part[0]).slice(0, 2).join('')}</span></div></header>
     <main id="main-content">{error && <p className="form-error" role="alert">Unable to refresh data: {error}. Retrying shortly.</p>}
       {view === 'dashboard' && <>
         <Heading eyebrow="YOUR OPERATIONS, AT A GLANCE" title="A smooth arrival. Every time." description="Manage your vehicles, team, and guest experience in one place." action={intakeButton} />

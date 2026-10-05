@@ -1,3 +1,4 @@
+import { requireStaff } from '@/lib/staff-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { ApiError, listTickets, guestTicket, createTicket, requestVehicle, changeStatus, getWelcomeMessage } from '@/lib/db';
 import { checkout, confirmPayment } from '@/lib/payments';
@@ -14,9 +15,10 @@ function failure(error: unknown) {
 export async function GET(request: NextRequest) {
   try {
     const action = request.nextUrl.searchParams.get('action') || 'list';
-    if (action === 'list') return json(listTickets());
+    if (action === 'list') { requireStaff(request); return json(listTickets()); }
     if (action === 'guest') return json(guestTicket(request.nextUrl.searchParams.get('token') || ''));
     if (action === 'message') {
+      requireStaff(request);
       const id = Number(request.nextUrl.searchParams.get('id'));
       if (!Number.isSafeInteger(id) || id < 1) return json({ error: 'Invalid ticket ID' }, 422);
       return json(getWelcomeMessage(id) || null);
@@ -26,14 +28,17 @@ export async function GET(request: NextRequest) {
 }
 export async function POST(request: NextRequest) {
   try {
+    const action = request.nextUrl.searchParams.get('action');
+    let staff = ['create', 'retry-message', 'status'].includes(action || '') ? requireStaff(request) : null;
     let input: Record<string, unknown>;
     try {
       const parsed: unknown = await request.json();
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
       input = parsed as Record<string, unknown>;
     } catch { return json({ error: 'Invalid JSON' }, 400); }
-    const action = request.nextUrl.searchParams.get('action');
+    if (staff) staff = requireStaff(request);
     if (action === 'create') {
+      input.attendant = staff!.name;
       const ticket = createTicket(input, request.nextUrl.origin);
       // Saving the car and its outbox entry is atomic. Provider failures never erase the car.
       const notification = await sendWelcomeMessage(ticket.id);

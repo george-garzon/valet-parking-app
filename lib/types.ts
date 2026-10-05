@@ -1,3 +1,5 @@
+export type StaffRole = 'admin' | 'manager' | 'attendant';
+export type StaffUser = { id: number; username: string; name: string; role: StaffRole; active: boolean };
 export type Status = 'parked' | 'requested' | 'retrieving' | 'ready' | 'completed';
 export type SpotType = 'compact' | 'large' | 'handicap';
 export type ParkingLot = { id: string; name: string; compact: number; large: number; handicap: number };

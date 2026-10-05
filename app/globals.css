@@ -202,3 +202,10 @@
 .spots-available{color:#246b37}.spots-full{color:#a42d2b}
 .parking-map-note,.parking-availability>.form-error{font-size:12px;margin:14px 20px;line-height:1.6}
 .parking-map-note{color:var(--muted)}
+
+.print-ticket-link{margin:14px 0;text-decoration:none}
+.paper-ticket-tools{padding:0 24px 16px;font-size:12px}.paper-ticket-tools p{color:var(--muted);line-height:1.6;margin-top:6px}
+
+.staff-session-bar{position:relative;z-index:5;display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap;padding:10px 20px;background:#fff;border-bottom:1px solid var(--line);font-size:12px}.staff-session-bar button{background:#edf5f0;padding:8px 12px;border-radius:6px;color:var(--green)}
+.staff-login{max-width:440px;margin:70px auto;padding:20px}.staff-login>.panel{padding:28px}.staff-login h1{font-size:26px;margin:10px 0}.staff-login p{line-height:1.6;color:var(--muted);font-size:12px}.staff-login form{display:grid;gap:18px;margin-top:24px}.staff-login-help{margin-top:20px}
+.employee-users{max-width:1000px;margin:35px auto;padding:20px}.employee-users>h1{margin:20px 0 8px}.employee-users>p{color:var(--muted);margin-bottom:24px}.employee-user-create,.employee-user-list{padding:24px;margin-top:20px}.employee-user-create form{margin-top:18px}.employee-user-create button{margin-top:18px}.employee-user-list form{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:18px 0;border-bottom:1px solid var(--line)}.employee-user-list form>div{flex:1;min-width:150px}.employee-user-list form p{font-size:12px;color:var(--muted);margin-top:5px}.employee-user-list .field{min-width:120px}.employee-pin{padding:20px;border:1px solid #b8d6bf;background:#edf8ed;border-radius:10px;margin:20px 0}.employee-pin p{margin:10px 0;line-height:1.5}.employee-pin code{font-size:22px;letter-spacing:2px}

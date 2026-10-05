@@ -1,5 +1,6 @@
 """Exercise the production Next.js API with isolated SQLite storage."""
 import json
+import http.cookiejar
 import os
 from pathlib import Path
 import socket
@@ -24,15 +25,16 @@ def run():
                            SMS_PROVIDER='preview', PUBLIC_APP_URL=base,
                            RATE_TRANSIENT_CENTS='3100', TWILIO_AUTH_TOKEN='secret-test-only')
         server = None
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
         def request(action, payload=None, suffix=''):
             req = urllib.request.Request(
                 f'{base}/api?action={action}{suffix}',
                 data=json.dumps(payload).encode() if payload is not None else None,
-                headers={'Content-Type': 'application/json'},
+                headers={'Content-Type': 'application/json', 'Origin': base},
             )
             try:
-                with urllib.request.urlopen(req, timeout=3) as response:
+                with opener.open(req, timeout=3) as response:
                     return response.status, json.load(response)
             except urllib.error.HTTPError as error:
                 return error.code, json.load(error)
@@ -55,6 +57,12 @@ def run():
 
         try:
             server = start()
+            assert request('list')[0] == 401
+            setup = subprocess.run(['node', '--conditions=react-server', '--import', 'tsx', '-e', "import {bootstrapAdmin} from './lib/staff-auth.ts'; console.log(JSON.stringify(bootstrapAdmin('workflow-admin','Workflow Admin')));"], cwd=ROOT, env=environment, capture_output=True, text=True, check=True)
+            account = json.loads(setup.stdout)
+            login = urllib.request.Request(f'{base}/api/auth', data=json.dumps(dict(action='login', username=account['user']['username'], pin=account['pin'])).encode(), headers={'Content-Type':'application/json', 'Origin':base})
+            with opener.open(login) as response:
+                assert response.status == 200
             assert request('list') == (200, [])
             assert request('create', {})[0] == 422
             assert request('create', [])[0] == 400
@@ -67,10 +75,20 @@ def run():
             assert ticket['notification']['status'] == 'preview'
             assert 'Test Harbor Inn' in ticket['notification']['body']
             assert f"{base}/?ticket={ticket['token']}" in ticket['notification']['body']
-            with urllib.request.urlopen(base) as response:
+            with opener.open(base) as response:
                 html = response.read().decode()
                 assert 'Test Harbor Inn' in html and 'secret-test-only' not in html
             assert len(ticket['token']) == 48
+            with opener.open(f"{base}/api/print?id={ticket['id']}") as response:
+                printed = response.read().decode()
+                assert response.headers['Cache-Control'] == 'private, no-store'
+                assert 'Podium / key copy' in printed and 'Guest claim ticket' in printed
+                assert f"{base}/?ticket={ticket['token']}" in printed
+                assert 'data:image/png;base64,' in printed
+                guest_half = printed.split('class="stub guest-stub"')[1]
+                assert 'K-3' not in guest_half and 'B-04' not in guest_half
+            with opener.open(f'{base}/api/print?blank=true&count=5') as response:
+                assert response.read().decode().count('class="sheet"') == 5
             assert request('create', data)[0] == 409
             assert request('status', {'id': [], 'status': 'requested'})[0] == 422
             status, public = request('guest', suffix=f"&token={ticket['token']}")

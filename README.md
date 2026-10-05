@@ -4,6 +4,8 @@ A local valet app inspired by the operational features described at https://www.
 
 For the full product feature inventory and future landing page content, see [LANDING_PAGE_FEATURES.md](LANDING_PAGE_FEATURES.md).
 
+For client rollout, networking, garage coverage, and outage procedures, see [CLIENT_IMPLEMENTATION_GUIDE.md](CLIENT_IMPLEMENTATION_GUIDE.md).
+
 ## Run
 
 Requires Node.js 20.9+ and npm. PHP is no longer required.
@@ -94,11 +96,11 @@ Each ticket has one welcome-message record. Concurrent submissions and retries o
 
 ## Scope
 
-This remains a **local prototype**. Staff screens and API routes do not have authentication. Development and start commands bind to `127.0.0.1`. Do not expose it publicly with real guest data until staff authentication and authorization are implemented. Guest links are bearer credentials; anyone with the link can view that ticket and request retrieval. Guest responses omit phone numbers, condition notes, key tags, parking spaces, and attendant names.
+This remains a **local prototype**. Staff screens and APIs require role-aware employee PIN sessions. Development and start commands bind to `127.0.0.1`. Before public use with real guest data, validate HTTPS deployment, access controls, backups, and remaining production safeguards. Guest links are bearer credentials; anyone with the link can view that ticket and request retrieval. Guest responses omit phone numbers, condition notes, key tags, parking spaces, and attendant names.
 
 SQLite requires a writable, persistent filesystem and a Node.js runtime. For serverless or multi-instance deployment, use a shared database instead of a local SQLite file.
 
-Remaining production work includes staff login and roles, rate limiting, HTTPS, retention controls, audit logs, photo retention controls, SMS delivery callbacks/background recovery, and live payment validation.
+Remaining production work includes MFA/idle locking, broader rate limiting, HTTPS operations, retention controls, full ticket audit logs, photo retention controls, SMS delivery callbacks/background recovery, and live payment validation.
 
 ## Verify
 
@@ -123,7 +125,7 @@ One active checkout per ticket prevents repeated clicks charging twice. After ch
 
 Set `VEHICLE_PHOTOS_ENABLED=true` in `.env.local` and restart. Open a saved ticket from the desktop or worker vehicle list (the ticket also opens after check-in). While its status is **Parked**, staff can add or replace one **Vehicle** photo and one **License plate** photo, including using a phone camera. Each image must be JPEG or PNG, up to 5 MB; convert HEIC images before uploading. Select a saved thumbnail to open the full image. Photos remain viewable through retrieval and completion, but can only be changed while parked.
 
-Photos persist as binary records in the business's SQLite database, outside `public/`, and are excluded from guest tickets. Turning the feature off hides photos and disables their API without deleting saved records. Include the database in backups; images increase its size. Photo endpoints have the same prototype staff-access limitation as the other staff APIs: authentication and retention controls are still needed before public use.
+Photos persist as binary records in the business's SQLite database, outside `public/`, and are excluded from guest tickets. Turning the feature off hides photos and disables their API without deleting saved records. Include the database in backups; images increase its size. Photo endpoints require staff sign-in; retention controls and deployment safeguards still need production validation.
 
 ## Parking lots and garages
 
@@ -141,3 +143,50 @@ Desktop and worker **Vehicles** screens show available/total counts per lot and 
 **Parked**, **Requested**, and **Retrieving** vehicles occupy their selected category. **Ready for pickup** frees capacity because the car has moved to the pickup area. Availability refreshes with tickets. Keep lot IDs stable when renaming lots so assignments continue counting; lowering capacity below current occupancy displays an over-capacity notice and blocks new assignments until space frees up.
 
 Existing tickets and free-text space references remain intact. Legacy tickets without lot/type assignments, or tickets whose lot was removed, display an excluded-vehicle notice; their occupancy is not guessed. When lot tracking is disabled, check-in uses the original required free-text parking space field. Lot assignments are staff-only and excluded from guest responses.
+
+## Physical two-part tickets and outage supplies
+
+Open any saved staff ticket and choose **Print two-part ticket**. This opens a separate print view with matching ticket numbers and a dashed cut line:
+
+- **Podium / key copy:** keep with the keys. Includes guest/contact, vehicle, parking reference, key tag, attendant, arrival, rate, notes, and writable handoff/payment fields.
+- **Guest claim ticket:** give to the guest. Includes the matching ticket number, vehicle, arrival, fee, optional hotel room, pickup location, and QR/private link. Staff contact and retrieval details are excluded from this half.
+
+Select **Print ticket** to use the browser/operating-system printer dialog. Use a connected printer, A4 or Letter paper in portrait, 100% scale, and disable browser headers/footers. Review the preview, especially for long notes; printer margins and pagination vary. Cut the two halves apart. Printing is manual and does not change status or confirm payment. Reprints retain the original ticket number. Direct silent printing, automatic cutting, and dedicated thermal-printer layouts are not implemented.
+
+Desktop and worker check-in offer **Print 5 blank fallback tickets**. Each page has a matching pair of unique `OFF-...` paper references and writable vehicle, guest, key, parking, and handoff fields. Print supplies **before** an outage. These references are not database tickets and have no guest QR; guests request pickup at the podium. After service returns, search for already-saved vehicles, create only missing digital records, and record the paper reference in their condition/arrival notes for reconciliation.
+
+The print view also offers **Save printable HTML**. QR images and styles are embedded, so the downloaded file can be reopened and printed without connectivity. It contains private staff information and, for saved tickets, a private guest link: use approved staff storage and retention. Reopening/reprinting a saved blank batch repeats its references; do not issue duplicate paper numbers. An already-open app cannot generate new print views during an outage unless the server remains reachable. The guest QR still needs a connection to open the digital ticket. Browser printing does not report physical printer success to the app; staff must check the output.
+
+## Staff accounts, roles, and PIN sign-in
+
+Staff sign-in is required for the dashboard, worker station, ticket inventory, check-in, dispatch changes, text retries, parking photos, printed staff tickets, and employee management. Guest ticket links, guest retrieval/payment actions, and Stripe's signed webhook remain separate from staff sign-in.
+
+Create the **first administrator** from the project directory after setting up `.env.local`:
+
+```sh
+npm run staff:create-admin -- owner-admin "Owner Name"
+```
+
+The command uses that deployment's business/storage settings, creates an administrator only when no staff accounts exist, and prints a randomly generated **8-digit PIN once**. Record it securely; there is no default or shared PIN. Sign in with the employee ID and PIN, then open **Employees** from the staff bar to add users.
+
+| Role | Valet operations | Employee management |
+| --- | --- | --- |
+| Administrator | All staff ticket workflows and dashboard | Create all roles, reset PINs, change roles, deactivate/reactivate accounts |
+| Manager | All staff ticket workflows and dashboard | Create attendants; reset their PINs and deactivate/reactivate them |
+| Attendant | Worker check-in, inventory, retrieval, photos, and printing | No employee management |
+
+Attendants enter the worker station by default. All staff roles can read operational ticket details needed to perform valet work; these roles do not implement per-ticket ownership or separate financial-data permissions. Receiving attendant on new tickets comes from the signed-in employee, rather than a browser-supplied name.
+
+Employee IDs are unique within a business and case-insensitive. New-user and reset flows generate a PIN displayed only in the immediate result; PINs cannot be retrieved later. Share each PIN privately. Managers cannot create administrators/managers or promote attendants. You cannot deactivate yourself or change your own role; the service also protects the last active administrator. Deactivation preserves historical records.
+
+PINs use salted scrypt hashes. Server sessions use random tokens, store token hashes, expire after **8 hours**, and use HttpOnly / SameSite Strict cookies (Secure on HTTPS deployments). Staff mutations check the request Origin. Configure `PUBLIC_APP_URL` for the actual public HTTPS origin behind a reverse proxy; leave it blank for localhost development. PIN reset, role change, and account activation changes revoke that employee's sessions. **Lock / sign out** ends the current device's session. Session checks run on focus and periodically; staff API permissions are checked on every request.
+
+Sign-in allows five verification attempts per employee ID in a 15-minute window and has a business-wide ceiling of 100 attempts per minute. Successful sign-in clears the employee's attempt count. Limits persist in SQLite. If a PIN is lost, use the permitted administrator/manager reset flow. For administrator recovery by an authorized operator with access to the server:
+
+```sh
+npm run staff:reset-pin -- owner-admin
+```
+
+This local command resets an existing active account, shows the new PIN once, clears its employee-specific attempt limit, and revokes its sessions. Protect server access and database backups: local operators can reset credentials. Staff creation, changes, PIN resets, and successful sign-ins record basic access events in `staff_audit`; a full ticket/action audit interface is not implemented.
+
+Authentication and session decisions use the [OWASP authentication guidance](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html) and [session guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html) as references. PIN-only sign-in is intended for controlled staff devices and requires HTTPS for real deployments. MFA, SSO, automatic idle locking, broad API abuse limits, and independent production security review remain future work. A generated PIN does not provide offline authentication or offline synchronization; preprint fallback supplies before an outage.
