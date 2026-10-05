@@ -190,15 +190,15 @@
 .photo-grid img,.photo-empty{width:100%;height:120px;object-fit:contain;background:#f3f6f3;border-radius:8px;margin:8px 0}
 .photo-empty{display:grid;place-items:center;color:var(--muted);font-size:12px}
 .photo-grid input{width:100%;font-size:11px;padding:8px}
-.parking-map{margin-bottom:22px;padding-bottom:18px}
-.parking-legend,.parking-map-note,.parking-map>.form-error{margin:12px 20px}
-.parking-legend{display:flex;gap:18px;font-size:12px}
-.parking-map-rows{padding:0 20px;overflow-x:auto}
-.parking-map-row{display:flex;gap:10px;margin:10px 0;width:max-content;min-width:100%}
-.parking-space{width:112px;min-height:100px;flex-shrink:0;padding:12px 8px;border:1px solid;border-radius:8px;text-align:center}
-.parking-space strong,.parking-space small,.parking-space span{display:block}
-.parking-space small{margin:5px 0}.parking-space span{font-size:10px;line-height:1.6;overflow-wrap:anywhere}
-.parking-space.available{background:#edf8ed;border-color:#73a778;color:#245d2b}
-.parking-space.available:disabled{opacity:1;cursor:default}
-.parking-space.occupied{background:#fff0ee;border-color:#d9928e;color:#962c28}
 @media(max-width:380px){.photo-grid{grid-template-columns:1fr}}
+
+.parking-availability{margin-bottom:22px;padding-bottom:18px}
+.parking-lots{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:14px;padding:0 20px}
+.parking-lot{border:1px solid var(--line);border-radius:10px;padding:16px}
+.parking-lot-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.parking-lot-heading h3{font-size:16px}.parking-lot-heading>strong{font-size:12px}
+.parking-lot dl{margin:14px 0 0}.parking-lot dl>div{display:flex;justify-content:space-between;gap:12px;border-top:1px solid var(--line);padding:10px 0}
+.parking-lot dd{margin:0;text-align:right;font-size:12px}.parking-lot dd small{display:block;margin-top:4px}
+.spots-available{color:#246b37}.spots-full{color:#a42d2b}
+.parking-map-note,.parking-availability>.form-error{font-size:12px;margin:14px 20px;line-height:1.6}
+.parking-map-note{color:var(--muted)}

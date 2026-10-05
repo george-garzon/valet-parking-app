@@ -1,9 +1,16 @@
 export type Status = 'parked' | 'requested' | 'retrieving' | 'ready' | 'completed';
+export type SpotType = 'compact' | 'large' | 'handicap';
+export type ParkingLot = { id: string; name: string; compact: number; large: number; handicap: number };
+export const spotTypes: SpotType[] = ['compact', 'large', 'handicap'];
+export const spotLabels: Record<SpotType, string> = { compact: 'Compact', large: 'Large', handicap: 'Handicap' };
+export const occupiesParking = (ticket: { status: Status }) => ['parked', 'requested', 'retrieving'].includes(ticket.status);
+export function availableSpots(lot: ParkingLot, type: SpotType, tickets: Ticket[]) { return Math.max(0, lot[type] - tickets.filter(t => occupiesParking(t) && t.lot_id === lot.id && t.spot_type === type).length); }
+
 export type ParkingType = 'Transient' | 'Overnight' | 'Monthly';
 export type BusinessConfig = {
   id: string; businessName: string; businessType: 'hotel' | 'business'; brandName: string; logoUrl: string;
   primaryColor: string; timeZone: string; publicUrl: string; pickupLocation: string;
-  vehiclePhotosEnabled: boolean; parkingMapEnabled: boolean; parkingRows: string[][];
+  vehiclePhotosEnabled: boolean; parkingLotsEnabled: boolean; parkingLots: ParkingLot[];
   paymentsEnabled: boolean; paymentRequired: boolean; tipsEnabled: boolean; tipPresets: number[];
   rates: Record<ParkingType, number>; smsProvider: 'preview' | 'disabled' | 'twilio'; phoneCountry: string;
 };
@@ -16,7 +23,7 @@ export type VehicleInput = {
   guest: string; phone: string; make: string; model: string; color: string;
   plate: string; space: string; key_tag: string; type: ParkingType;
   notes: string; attendant: string;
-  room_number?: string;
+  room_number?: string; lot_id?: string; spot_type?: SpotType | '';
 };
 export type Ticket = VehicleInput & {
   id: number; token: string; status: Status; rate: number;

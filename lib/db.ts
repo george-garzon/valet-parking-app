@@ -26,6 +26,8 @@ function migrateRoomColumn(db: Database.Database) {
   )`);
   const columns = db.prepare('PRAGMA table_info(tickets)').all() as { name: string }[];
   if (!columns.some(column => column.name === 'room_number')) db.exec("ALTER TABLE tickets ADD COLUMN room_number TEXT NOT NULL DEFAULT ''");
+  for (const column of ['lot_id', 'spot_type']) if (!columns.some(c => c.name === column)) db.exec(`ALTER TABLE tickets ADD COLUMN ${column} TEXT NOT NULL DEFAULT ''`);
+
 }
 function database() {
   // Runtime data is user-owned storage, not a build asset to include in file tracing.
@@ -38,7 +40,7 @@ function database() {
   const existing = globalDb.valetDatabases.get(filename);
   if (existing) {
     // Development hot reload can retain a connection created before this migration.
-    if (globalDb.valetSchemaVersions.get(filename) !== 4) { migrateRoomColumn(existing); globalDb.valetSchemaVersions.set(filename, 4); }
+    if (globalDb.valetSchemaVersions.get(filename) !== 5) { migrateRoomColumn(existing); globalDb.valetSchemaVersions.set(filename, 5); }
     return existing;
   }
   mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -61,7 +63,7 @@ function database() {
   // Upgrade existing prototype databases in place without changing their tickets or tokens.
   migrateRoomColumn(db);
   globalDb.valetDatabases.set(filename, db);
-  globalDb.valetSchemaVersions.set(filename, 4);
+  globalDb.valetSchemaVersions.set(filename, 5);
   return db;
 }
 
@@ -75,25 +77,28 @@ export function guestTicket(token: string) {
   return ticket;
 }
 export function createTicket(input: Record<string, unknown>, origin: string) {
+  const config = getBusinessConfig();
   const fields = ['guest', 'phone', 'make', 'model', 'color', 'plate', 'space', 'key_tag', 'type', 'notes', 'attendant'] as const;
   const values: Record<string, string | number> = {};
   for (const field of fields) {
     if (input[field] !== undefined && typeof input[field] !== 'string') throw new ApiError(`Invalid field: ${field}`, 422);
     const value = ((input[field] as string | undefined) || '').trim();
-    if (field !== 'notes' && !value) throw new ApiError(`Please complete ${field.replace('_', ' ')}.`, 422);
+    if (field !== 'notes' && !(field === 'space' && config.parkingLotsEnabled) && !value) throw new ApiError(`Please complete ${field.replace('_', ' ')}.`, 422);
     if ([...value].length > (field === 'notes' ? 2000 : 120)) throw new ApiError(`Field too long: ${field}`, 422);
     values[field] = value;
   }
-  const config = getBusinessConfig();
   if (input.room_number !== undefined && typeof input.room_number !== 'string') throw new ApiError('Invalid room number', 422);
   const room = ((input.room_number as string | undefined) || '').trim();
   if (room.length > 40) throw new ApiError('Room number must be 40 characters or fewer.', 422);
   if (config.businessType !== 'hotel' && room) throw new ApiError('Room linking is available only for hotel locations.', 422);
   values.room_number = config.businessType === 'hotel' ? room : '';
-  if (config.parkingMapEnabled) {
-    values.space = String(values.space).toUpperCase();
-    if (!config.parkingRows.flat().includes(String(values.space))) throw new ApiError('Choose a configured parking space.', 422);
-  }
+  if (config.parkingLotsEnabled) {
+    const lot = config.parkingLots.find(lot => lot.id === input.lot_id);
+    if (!lot) throw new ApiError('Choose a configured parking lot or garage.', 422);
+    if (typeof input.spot_type !== 'string' || !['compact', 'large', 'handicap'].includes(input.spot_type)) throw new ApiError('Choose a spot type.', 422);
+    values.lot_id = lot.id; values.spot_type = input.spot_type;
+    values.space = `${lot.name} · ${input.spot_type}${values.space ? ` · ${values.space}` : ''}`;
+  } else if (input.lot_id || input.spot_type) throw new ApiError('Parking lots are disabled.', 422);
   const rates = config.rates;
   if (!Object.hasOwn(rates, values.type)) throw new ApiError('Invalid parking type', 422);
   values.plate = (values.plate as string).toUpperCase();
@@ -110,7 +115,11 @@ export function createTicket(input: Record<string, unknown>, origin: string) {
   const keys = Object.keys(values);
   try {
     return database().transaction(() => {
-      if (config.parkingMapEnabled && database().prepare("SELECT id FROM tickets WHERE UPPER(space) = ? AND status IN ('parked', 'requested', 'retrieving')").get(values.space)) throw new ApiError('This parking space is occupied. Choose another space.', 409);
+      if (config.parkingLotsEnabled) {
+        const lot = config.parkingLots.find(lot => lot.id === values.lot_id)!;
+        const { count } = database().prepare("SELECT COUNT(*) AS count FROM tickets WHERE lot_id = ? AND spot_type = ? AND status IN ('parked', 'requested', 'retrieving')").get(values.lot_id, values.spot_type) as { count: number };
+        if (count >= lot[values.spot_type as 'compact' | 'large' | 'handicap']) throw new ApiError('This spot type is full in the selected lot. Choose another option.', 409);
+      }
       const id = database().prepare(`INSERT INTO tickets (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`).run(...Object.values(values)).lastInsertRowid;
       const ticket = database().prepare('SELECT * FROM tickets WHERE id = ?').get(id) as Ticket;
       let status: GuestMessage['status'] = config.smsProvider === 'disabled' ? 'skipped' : config.smsProvider === 'preview' ? 'preview' : consent ? 'pending' : 'skipped';
@@ -121,7 +130,7 @@ export function createTicket(input: Record<string, unknown>, origin: string) {
       }
       database().prepare('INSERT INTO guest_messages (ticket_id, body, media_url, to_phone, status, consent_at, error, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(ticket.id, body, process.env.SMS_MEDIA_URL?.trim() || '', ticket.phone, status, consent ? values.created_at : null, error, values.created_at);
       return ticket;
-    })();
+    }).immediate();
   } catch (error) {
     if (error instanceof Error && error.message.includes('tickets.plate')) throw new ApiError('This license plate already has an active ticket.', 409);
     throw error;

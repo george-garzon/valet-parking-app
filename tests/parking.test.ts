@@ -3,35 +3,55 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { availableSpots } from '../lib/types';
 import { getBusinessConfig } from '../lib/config';
-import { createTicket, changeStatus, savePhoto, readPhoto, photoMetadata, guestTicket } from '../lib/db';
+import { createTicket, listTickets, changeStatus, savePhoto, readPhoto, photoMetadata, guestTicket } from '../lib/db';
 import { GET, POST } from '../app/api/photos/route';
 
 const original = { ...process.env };
 let storage: string;
-const input = { guest: 'Alex', phone: '555-0100', make: 'Acura', model: 'ADX', color: 'Black', plate: 'TEST1', space: 'A-01', key_tag: 'K1', type: 'Transient', notes: '', attendant: 'Jamie' };
+const input = { guest: 'Alex', phone: '555-0100', make: 'Acura', model: 'ADX', color: 'Black', plate: 'TEST1', space: 'A-01', lot_id: 'lot-a', spot_type: 'compact', key_tag: 'K1', type: 'Transient', notes: '', attendant: 'Jamie' };
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1cAAAAASUVORK5CYII=', 'base64');
 beforeEach(() => {
   storage = mkdtempSync(join(tmpdir(), 'porter-parking-'));
-  Object.assign(process.env, { VALET_STORAGE: storage, BUSINESS_ID: 'parking-test', SMS_PROVIDER: 'disabled', VEHICLE_PHOTOS_ENABLED: 'true', PARKING_MAP_ENABLED: 'true', PARKING_MAP_ROWS: '[["A-01","A-02"],["B-01"]]', GUEST_PAYMENT_REQUIRED: 'false' });
+  Object.assign(process.env, { VALET_STORAGE: storage, BUSINESS_ID: 'parking-test', SMS_PROVIDER: 'disabled', VEHICLE_PHOTOS_ENABLED: 'true', PARKING_LOTS_ENABLED: 'true', PARKING_LOTS: '[{"id":"lot-a","name":"Lot A","compact":1,"large":2,"handicap":0},{"id":"garage-b","name":"Garage B","compact":3,"large":0,"handicap":1}]', GUEST_PAYMENT_REQUIRED: 'false' });
 });
 afterEach(() => { for (const key of Object.keys(process.env)) if (!(key in original)) delete process.env[key]; Object.assign(process.env, original); rmSync(storage, { recursive: true, force: true }); });
-test('configured spaces reject duplicate occupancy until ready, with case normalization', () => {
-  const ticket = createTicket({ ...input, space: 'a-01' }, 'http://localhost');
-  assert.equal(ticket.space, 'A-01');
-  assert.throws(() => createTicket({ ...input, plate: 'TEST2' }, 'http://localhost'), /occupied/);
-  assert.throws(() => createTicket({ ...input, plate: 'TEST2', space: 'X-99' }, 'http://localhost'), /configured/);
+test('lot capacity blocks overbooking until ready and tracks each category independently', () => {
+  const ticket = createTicket(input, 'http://localhost');
+  const lot = getBusinessConfig().parkingLots[0];
+  assert.equal(ticket.lot_id, 'lot-a'); assert.equal(ticket.spot_type, 'compact');
+  assert.equal(availableSpots(lot, 'compact', listTickets()), 0);
+  assert.equal(availableSpots(lot, 'large', listTickets()), 2);
+  assert.throws(() => createTicket({ ...input, plate: 'TEST2' }, 'http://localhost'), /full/);
+  assert.throws(() => createTicket({ ...input, plate: 'TEST2', lot_id: 'missing' }, 'http://localhost'), /configured/);
+  assert.throws(() => createTicket({ ...input, plate: 'TEST2', spot_type: 'handicap' }, 'http://localhost'), /full/);
+  assert.throws(() => createTicket({ ...input, plate: 'TEST2', spot_type: 'bus' }, 'http://localhost'), /spot type/);
+  assert.ok(createTicket({ ...input, plate: 'TEST3', spot_type: 'large', space: '' }, 'http://localhost'));
+  assert.ok(createTicket({ ...input, plate: 'TEST4', lot_id: 'garage-b', spot_type: 'handicap' }, 'http://localhost'));
   changeStatus(ticket.id, 'requested'); changeStatus(ticket.id, 'retrieving');
-  assert.throws(() => createTicket({ ...input, plate: 'TEST2' }, 'http://localhost'), /occupied/);
+  assert.throws(() => createTicket({ ...input, plate: 'TEST2' }, 'http://localhost'), /full/);
   changeStatus(ticket.id, 'ready');
+  assert.equal(availableSpots(lot, 'compact', listTickets()), 1);
   assert.ok(createTicket({ ...input, plate: 'TEST2' }, 'http://localhost'));
-  process.env.PARKING_MAP_ENABLED = 'false';
-  assert.ok(createTicket({ ...input, plate: 'TEST3', space: 'X-99' }, 'http://localhost'));
+  process.env.PARKING_LOTS_ENABLED = 'false';
+  const { lot_id, spot_type, ...legacy } = input;
+  const old = createTicket({ ...legacy, plate: 'TEST5', space: 'X-99' }, 'http://localhost');
+  assert.equal(old.space, 'X-99'); assert.equal(old.lot_id, '');
+  assert.throws(() => createTicket({ ...legacy, plate: 'TEST6', space: '' }, 'http://localhost'), /complete space/);
 });
-test('parking map config rejects malformed, empty, or duplicate space rows', () => {
-  for (const rows of ['oops', '[]', '[[]]', '[["A-01","a-01"]]', '[[1]]']) {
-    process.env.PARKING_MAP_ROWS = rows; assert.throws(() => getBusinessConfig());
+test('lot configuration rejects malformed, duplicate, negative, fractional and empty capacities', () => {
+  for (const lots of ['oops', '[]', '[{}]', '[{"id":"a","name":"A","compact":-1,"large":1,"handicap":0}]', '[{"id":"a","name":"A","compact":1.5,"large":1,"handicap":0}]', '[{"id":"a","name":"A","compact":0,"large":0,"handicap":0}]', '[{"id":"a","name":"A","compact":1,"large":0,"handicap":0},{"id":"a","name":"B","compact":1,"large":0,"handicap":0}]']) {
+    process.env.PARKING_LOTS = lots; assert.throws(() => getBusinessConfig());
   }
+});
+test('capacity reduction cannot accept new vehicles and legacy assignments stay excluded', () => {
+  createTicket(input, 'http://localhost');
+  process.env.PARKING_LOTS = '[{"id":"lot-a","name":"Renamed garage","compact":0,"large":1,"handicap":0}]';
+  const lot = getBusinessConfig().parkingLots[0];
+  assert.equal(availableSpots(lot, 'compact', listTickets()), 0);
+  assert.throws(() => createTicket({ ...input, plate: 'TEST2' }, 'http://localhost'), /full/);
+  assert.ok(!('lot_id' in guestTicket(listTickets()[0].token)));
 });
 test('photos persist, replace independently, stay business isolated, and never enter guest data', async () => {
   const ticket = createTicket(input, 'http://localhost');

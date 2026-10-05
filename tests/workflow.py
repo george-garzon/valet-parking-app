@@ -20,7 +20,7 @@ def run():
         base = f'http://127.0.0.1:{port}'
         environment = dict(os.environ, VALET_STORAGE=storage, BUSINESS_ID='workflow-test',
                            BUSINESS_NAME='Test Harbor Inn', APP_BRAND_NAME='Test Valet',
-                           BUSINESS_TYPE='hotel',
+                           BUSINESS_TYPE='hotel', PARKING_LOTS_ENABLED='false',
                            SMS_PROVIDER='preview', PUBLIC_APP_URL=base,
                            RATE_TRANSIENT_CENTS='3100', TWILIO_AUTH_TOKEN='secret-test-only')
         server = None

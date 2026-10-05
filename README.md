@@ -2,6 +2,8 @@
 
 A local valet app inspired by the operational features described at https://www.avpmi.com/solutions/valet/. It is independent of AVPMi and does not connect to their systems.
 
+For the full product feature inventory and future landing page content, see [LANDING_PAGE_FEATURES.md](LANDING_PAGE_FEATURES.md).
+
 ## Run
 
 Requires Node.js 20.9+ and npm. PHP is no longer required.
@@ -96,7 +98,7 @@ This remains a **local prototype**. Staff screens and API routes do not have aut
 
 SQLite requires a writable, persistent filesystem and a Node.js runtime. For serverless or multi-instance deployment, use a shared database instead of a local SQLite file.
 
-Remaining production work includes staff login and roles, rate limiting, HTTPS, retention controls, audit logs, photo storage, SMS delivery callbacks/background recovery, and payment integration.
+Remaining production work includes staff login and roles, rate limiting, HTTPS, retention controls, audit logs, photo retention controls, SMS delivery callbacks/background recovery, and live payment validation.
 
 ## Verify
 
@@ -109,7 +111,7 @@ npm test
 Unit tests check business isolation, message templates, permission/phone validation, provider request encoding with mocked network calls, duplicate-send prevention, room linkage and database upgrades, catalog integrity, and QR decoding. The Python integration test starts an isolated production server and temporary database to check creation, configured rates/branding, text previews, guest privacy, room persistence, valid/invalid transitions, pickup completion, and private storage routing. Tests never send real messages. Python 3 is needed only for the integration test.
 # Guest payment and tips
 
-Set `GUEST_PAYMENTS_ENABLED=true` to offer USD Stripe-hosted checkout when guests tap the circular **Request** button. Set `GUEST_PAYMENT_REQUIRED=true` to require the parking fee before guest retrieval, or leave it false to offer **Request now · Pay at valet**. Staff can still request vehicles directly for guests paying at the podium. Zero-fee tickets can request without a charge.
+Set `GUEST_PAYMENTS_ENABLED=true` to offer USD Stripe-hosted checkout when guests tap **Request vehicle**. Set `GUEST_PAYMENT_REQUIRED=true` to require the parking fee before guest retrieval, or leave it false to offer **Request now · Pay at valet**. Staff can still request vehicles directly for guests paying at the podium. Zero-fee tickets can request without a charge.
 
 `GUEST_TIPS_ENABLED` independently controls the optional tip section within online checkout. `GUEST_TIP_PRESETS_CENTS` configures preset amounts; custom tips accept $0–$1,000. Tips are never preselected. With online payments off, guests request immediately and no online tip is collected.
 
@@ -123,15 +125,19 @@ Set `VEHICLE_PHOTOS_ENABLED=true` in `.env.local` and restart. Open a saved tick
 
 Photos persist as binary records in the business's SQLite database, outside `public/`, and are excluded from guest tickets. Turning the feature off hides photos and disables their API without deleting saved records. Include the database in backups; images increase its size. Photo endpoints have the same prototype staff-access limitation as the other staff APIs: authentication and retention controls are still needed before public use.
 
-## Parking map
+## Parking lots and garages
 
-Set these values in `.env.local` and restart:
+Enable `PARKING_LOTS_ENABLED=true` in `.env.local` and define any number of lots or garages:
 
 ```dotenv
-PARKING_MAP_ENABLED=true
-PARKING_MAP_ROWS='[["A-01","A-02","A-03"],["B-01","B-02","B-03"]]'
+PARKING_LOTS_ENABLED=true
+PARKING_LOTS='[{"id":"lot-a","name":"Lot A","compact":20,"large":10,"handicap":2},{"id":"garage-b","name":"Garage B","compact":30,"large":15,"handicap":4}]'
 ```
 
-Each nested array defines a row on the map, in display order. Use unique space labels (letters, numbers, spaces, or hyphens; up to 40 characters each, 500 spaces total). Labels are normalized to uppercase. The **Vehicles** screen on desktop and worker view shows the map with **green / Available** and **red / Occupied** labels and counts. Select an occupied space to open its ticket. The map updates with the existing ticket refresh.
+Each entry needs a unique lowercase slug `id`, a display `name`, and nonnegative integer capacities for `compact`, `large`, and `handicap` (zero disables that category; at least one spot per lot). Add entries for more lots or garages. Use your actual capacities: the local configuration includes example Lot A, Lot B, and Garage C counts. Restart after changes. The former `PARKING_MAP_ENABLED` / `PARKING_MAP_ROWS` settings are replaced by these lot settings.
 
-A space remains occupied for **Parked**, **Requested**, and **Retrieving** tickets; **Ready for pickup** frees it because the car has moved to the pickup area. Check-in offers configured spaces, disables occupied choices, and rejects duplicate assignments on the server. With the map off, the existing free-text space field remains available. Existing tickets are preserved; active tickets outside the configured map display a notice and are excluded from map counts. Configure labels to match your current spaces before enabling it. This is a row-based space diagram, not an uploaded floor-plan editor or sensor integration.
+Desktop and worker **Vehicles** screens show available/total counts per lot and spot type, green when capacity remains and red when full. Check-in requires a lot and spot type, displays remaining capacity, disables full options, and allows an optional space/level reference for retrieval. Staff choose the appropriate type explicitly, including handicap spaces; the app does not infer eligibility from a vehicle. Capacity is checked atomically on the server so concurrent check-ins cannot overbook a category.
+
+**Parked**, **Requested**, and **Retrieving** vehicles occupy their selected category. **Ready for pickup** frees capacity because the car has moved to the pickup area. Availability refreshes with tickets. Keep lot IDs stable when renaming lots so assignments continue counting; lowering capacity below current occupancy displays an over-capacity notice and blocks new assignments until space frees up.
+
+Existing tickets and free-text space references remain intact. Legacy tickets without lot/type assignments, or tickets whose lot was removed, display an excluded-vehicle notice; their occupancy is not guessed. When lot tracking is disabled, check-in uses the original required free-text parking space field. Lot assignments are staff-only and excluded from guest responses.
