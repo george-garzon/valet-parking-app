@@ -14,6 +14,11 @@ export class ApiError extends Error {
 
 const globalDb = globalThis as typeof globalThis & { valetDatabases?: Map<string, Database.Database>; valetSchemaVersions?: Map<string, number> };
 function migrateRoomColumn(db: Database.Database) {
+  db.exec(`CREATE TABLE IF NOT EXISTS ticket_photos (
+    ticket_id INTEGER NOT NULL REFERENCES tickets(id), kind TEXT NOT NULL,
+    mime TEXT NOT NULL, data BLOB NOT NULL, updated_at TEXT NOT NULL,
+    PRIMARY KEY(ticket_id, kind)
+  )`);
   db.exec(`CREATE TABLE IF NOT EXISTS ticket_payments (
     ticket_id INTEGER PRIMARY KEY, attempt TEXT NOT NULL, tip INTEGER NOT NULL,
     total INTEGER NOT NULL, created INTEGER NOT NULL, session_id TEXT UNIQUE,
@@ -33,7 +38,7 @@ function database() {
   const existing = globalDb.valetDatabases.get(filename);
   if (existing) {
     // Development hot reload can retain a connection created before this migration.
-    if (globalDb.valetSchemaVersions.get(filename) !== 3) { migrateRoomColumn(existing); globalDb.valetSchemaVersions.set(filename, 3); }
+    if (globalDb.valetSchemaVersions.get(filename) !== 4) { migrateRoomColumn(existing); globalDb.valetSchemaVersions.set(filename, 4); }
     return existing;
   }
   mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -56,7 +61,7 @@ function database() {
   // Upgrade existing prototype databases in place without changing their tickets or tokens.
   migrateRoomColumn(db);
   globalDb.valetDatabases.set(filename, db);
-  globalDb.valetSchemaVersions.set(filename, 3);
+  globalDb.valetSchemaVersions.set(filename, 4);
   return db;
 }
 
@@ -85,6 +90,10 @@ export function createTicket(input: Record<string, unknown>, origin: string) {
   if (room.length > 40) throw new ApiError('Room number must be 40 characters or fewer.', 422);
   if (config.businessType !== 'hotel' && room) throw new ApiError('Room linking is available only for hotel locations.', 422);
   values.room_number = config.businessType === 'hotel' ? room : '';
+  if (config.parkingMapEnabled) {
+    values.space = String(values.space).toUpperCase();
+    if (!config.parkingRows.flat().includes(String(values.space))) throw new ApiError('Choose a configured parking space.', 422);
+  }
   const rates = config.rates;
   if (!Object.hasOwn(rates, values.type)) throw new ApiError('Invalid parking type', 422);
   values.plate = (values.plate as string).toUpperCase();
@@ -101,6 +110,7 @@ export function createTicket(input: Record<string, unknown>, origin: string) {
   const keys = Object.keys(values);
   try {
     return database().transaction(() => {
+      if (config.parkingMapEnabled && database().prepare("SELECT id FROM tickets WHERE UPPER(space) = ? AND status IN ('parked', 'requested', 'retrieving')").get(values.space)) throw new ApiError('This parking space is occupied. Choose another space.', 409);
       const id = database().prepare(`INSERT INTO tickets (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`).run(...Object.values(values)).lastInsertRowid;
       const ticket = database().prepare('SELECT * FROM tickets WHERE id = ?').get(id) as Ticket;
       let status: GuestMessage['status'] = config.smsProvider === 'disabled' ? 'skipped' : config.smsProvider === 'preview' ? 'preview' : consent ? 'pending' : 'skipped';
@@ -174,5 +184,27 @@ export function settlePayment(session: string, total: number) {
     if (!p || p.total !== total) throw new ApiError('Payment does not match this ticket.', 409);
     database().prepare('UPDATE ticket_payments SET paid = 1 WHERE ticket_id = ?').run(p.ticket_id);
     database().prepare("UPDATE tickets SET status = 'requested', requested_at = ? WHERE id = ? AND status = 'parked'").run(new Date().toISOString(), p.ticket_id);
+  })();
+}
+
+export type PhotoKind = 'vehicle' | 'plate';
+export function photoMetadata(id: number) {
+  return database().prepare('SELECT kind, updated_at FROM ticket_photos WHERE ticket_id = ?').all(id) as { kind: PhotoKind; updated_at: string }[];
+}
+export function readPhoto(id: number, kind: PhotoKind) {
+  return database().prepare('SELECT mime, data FROM ticket_photos WHERE ticket_id = ? AND kind = ?').get(id, kind) as { mime: string; data: Buffer } | undefined;
+}
+export function savePhoto(id: number, kind: PhotoKind, data: Buffer, mime: string) {
+  if (!getBusinessConfig().vehiclePhotosEnabled) throw new ApiError('Vehicle photos are disabled.', 403);
+  if (!['vehicle', 'plate'].includes(kind)) throw new ApiError('Invalid photo kind.', 422);
+  if (!data.length || data.length > 5 * 1024 * 1024) throw new ApiError('Photos must be no larger than 5 MB.', 422);
+  const jpeg = data.length > 3 && data[0] === 255 && data[1] === 216 && data[2] === 255;
+  const png = data.length > 8 && data.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+  if (!((mime === 'image/jpeg' && jpeg) || (mime === 'image/png' && png))) throw new ApiError('Choose a JPEG or PNG image.', 422);
+  database().transaction(() => {
+    const ticket = getTicket(id);
+    if (!ticket) throw new ApiError('Ticket not found.', 404);
+    if (ticket.status !== 'parked') throw new ApiError('Photos can only be saved while parked.', 409);
+    database().prepare('INSERT INTO ticket_photos (ticket_id, kind, mime, data, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(ticket_id, kind) DO UPDATE SET mime=excluded.mime, data=excluded.data, updated_at=excluded.updated_at').run(id, kind, mime, data, new Date().toISOString());
   })();
 }

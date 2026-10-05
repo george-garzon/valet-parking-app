@@ -3,6 +3,7 @@ export type ParkingType = 'Transient' | 'Overnight' | 'Monthly';
 export type BusinessConfig = {
   id: string; businessName: string; businessType: 'hotel' | 'business'; brandName: string; logoUrl: string;
   primaryColor: string; timeZone: string; publicUrl: string; pickupLocation: string;
+  vehiclePhotosEnabled: boolean; parkingMapEnabled: boolean; parkingRows: string[][];
   paymentsEnabled: boolean; paymentRequired: boolean; tipsEnabled: boolean; tipPresets: number[];
   rates: Record<ParkingType, number>; smsProvider: 'preview' | 'disabled' | 'twilio'; phoneCountry: string;
 };

@@ -33,12 +33,22 @@ export function getBusinessConfig(): BusinessConfig {
     if (!['true', 'false'].includes(raw)) throw new Error(`${name} must be true or false.`);
     return raw === 'true';
   };
+  const parkingMapEnabled = flag('PARKING_MAP_ENABLED', false);
+  let parkingRows: string[][] = [];
+  if (parkingMapEnabled) {
+    let parsed: unknown;
+    try { parsed = JSON.parse(process.env.PARKING_MAP_ROWS || '[]'); } catch { throw new Error('PARKING_MAP_ROWS must be JSON rows of space labels.'); }
+    if (!Array.isArray(parsed) || !parsed.length || parsed.length > 50 || parsed.some(row => !Array.isArray(row) || !row.length || row.length > 50 || row.some(label => typeof label !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9 -]{0,39}$/.test(label)))) throw new Error('PARKING_MAP_ROWS must contain 1–50 rows of 1–50 space labels.');
+    parkingRows = (parsed as string[][]).map(row => row.map(label => label.trim().toUpperCase()));
+    const spaces = parkingRows.flat();
+    if (spaces.length > 500 || new Set(spaces).size !== spaces.length) throw new Error('Parking spaces must be unique, maximum 500.');
+  }
   const paymentsEnabled = flag('GUEST_PAYMENTS_ENABLED', false);
   const paymentRequired = flag('GUEST_PAYMENT_REQUIRED', false);
   if (paymentRequired && !paymentsEnabled) throw new Error('Required payment needs GUEST_PAYMENTS_ENABLED=true.');
   const tipPresets = (process.env.GUEST_TIP_PRESETS_CENTS || '300,500,1000').split(',').map(Number);
   if (tipPresets.length > 6 || tipPresets.some(n => !Number.isSafeInteger(n) || n <= 0 || n > 100000)) throw new Error('Tip presets must contain 1–6 positive cent amounts, maximum 100000.');
-  return { paymentsEnabled, paymentRequired, tipsEnabled: flag('GUEST_TIPS_ENABLED', true), tipPresets, id, businessType: businessType as BusinessConfig['businessType'], businessName: process.env.BUSINESS_NAME?.trim() || 'The Parkside Hotel',
+  return { vehiclePhotosEnabled: flag('VEHICLE_PHOTOS_ENABLED', false), parkingMapEnabled, parkingRows, paymentsEnabled, paymentRequired, tipsEnabled: flag('GUEST_TIPS_ENABLED', true), tipPresets, id, businessType: businessType as BusinessConfig['businessType'], businessName: process.env.BUSINESS_NAME?.trim() || 'The Parkside Hotel',
     brandName: process.env.APP_BRAND_NAME?.trim() || 'Porter', logoUrl, primaryColor: color, timeZone, publicUrl,
     pickupLocation: process.env.VALET_PICKUP_LOCATION?.trim() || 'the valet podium',
     rates, smsProvider: smsProvider as BusinessConfig['smsProvider'], phoneCountry: phoneCountry as CountryCode };

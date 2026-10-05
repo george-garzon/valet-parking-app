@@ -14,6 +14,23 @@ npm run dev
 
 Open http://127.0.0.1:3000.
 
+If `/api` fails with `ERR_DLOPEN_FAILED` and an incompatible architecture error,
+`better-sqlite3` was installed using a different Node architecture or version.
+Stop the dev server, select the Node installation you intend to use, then rebuild
+the native dependency in that same terminal:
+
+```sh
+node -p 'process.version + " " + process.arch'
+npm install
+npm rebuild better-sqlite3
+npm run dev
+```
+
+On Apple Silicon, use an `arm64` Node installation consistently for installation
+and development. If you manage Node with nvm, run `nvm use 24` first (or
+`nvm install 24` if needed). Rebuild again after switching Node versions or
+architectures. This preserves your SQLite data and environment settings.
+
 For a production build on your own Node.js server:
 
 ```sh
@@ -37,7 +54,7 @@ The migration retains the original SQLite table and API contract. Existing `stor
 - **Vehicles:** searchable ticket inventory, filters, condition notes, parking spaces, key tags, and shareable guest links.
 - **Employee station:** save guest and car information and advance requested → retrieving → ready → completed. Staff can request a parked vehicle from its ticket. Dispatch actions and background refreshes preserve unfinished check-in forms.
 - **Worker view (`/worker`):** a separate touch-friendly station with four icon tiles: Check in, Retrieve, Vehicles, and Ready. No desktop header or sidebar. Each task has focused controls, searchable vehicle cards with spaces/key tags, and quick navigation back to the icon grid. Open it from the desktop employee station or directly at `/worker`.
-- **Guest experience:** a random private link for each ticket; view vehicle status and request pickup. Guest pages refresh every 10 seconds and do not fetch the staff inventory.
+- **Guest experience:** a compact digital valet ticket with vehicle details and status in one row, a permanent ticket number, and no car illustration. Parked tickets show guest/rate details and the request action; requested/retrieving stages focus on progress and pickup instructions; ready tickets restore the QR for pickup; collected tickets show the completion message and any payment receipt. Checkout hides the progress and duplicate ticket details. A random private link for each ticket; view vehicle status and request pickup. Guest pages refresh every 10 seconds and do not fetch the staff inventory.
 
 Tickets persist in SQLite, ignored by Git. Each `BUSINESS_ID` has a separate database beneath `VALET_STORAGE` or `storage/`. The default `parkside` ID retains the original `storage/valet.sqlite` path. Other IDs use `storage/<business-id>/valet.sqlite`. Storage is outside `public/` and is never served as a web asset. Existing databases gain an optional room-number column automatically; existing tickets and guest links are preserved.
 
@@ -99,3 +116,22 @@ Set `GUEST_PAYMENTS_ENABLED=true` to offer USD Stripe-hosted checkout when guest
 Configure `PUBLIC_APP_URL` as your public HTTPS URL, `STRIPE_SECRET_KEY` (start with a test key), and `STRIPE_WEBHOOK_SECRET`. Register `/api/payments/webhook` in Stripe for `checkout.session.completed` and `checkout.session.async_payment_succeeded`. For local testing use Stripe CLI forwarding to that endpoint. No card information is stored by this app. Payment uses the ticket's saved rate, not a browser-supplied amount. Verified settlement atomically records payment and requests the vehicle; both webhook delivery and the guest return page can settle it safely. See [Stripe fulfillment documentation](https://docs.stripe.com/checkout/fulfillment).
 
 One active checkout per ticket prevents repeated clicks charging twice. After checkout starts, its fee and tip remain fixed when resumed; an expired session permits a fresh choice. Cancelling checkout does not request the car or mark it paid. Paid total and tip appear on the guest ticket and staff ticket details. Refunds, tax calculation, and staff gratuity payouts are handled separately in Stripe; they are not implemented in this app. Live Stripe transactions require your account configuration and end-to-end testing with your credentials.
+
+## Vehicle and license plate photos
+
+Set `VEHICLE_PHOTOS_ENABLED=true` in `.env.local` and restart. Open a saved ticket from the desktop or worker vehicle list (the ticket also opens after check-in). While its status is **Parked**, staff can add or replace one **Vehicle** photo and one **License plate** photo, including using a phone camera. Each image must be JPEG or PNG, up to 5 MB; convert HEIC images before uploading. Select a saved thumbnail to open the full image. Photos remain viewable through retrieval and completion, but can only be changed while parked.
+
+Photos persist as binary records in the business's SQLite database, outside `public/`, and are excluded from guest tickets. Turning the feature off hides photos and disables their API without deleting saved records. Include the database in backups; images increase its size. Photo endpoints have the same prototype staff-access limitation as the other staff APIs: authentication and retention controls are still needed before public use.
+
+## Parking map
+
+Set these values in `.env.local` and restart:
+
+```dotenv
+PARKING_MAP_ENABLED=true
+PARKING_MAP_ROWS='[["A-01","A-02","A-03"],["B-01","B-02","B-03"]]'
+```
+
+Each nested array defines a row on the map, in display order. Use unique space labels (letters, numbers, spaces, or hyphens; up to 40 characters each, 500 spaces total). Labels are normalized to uppercase. The **Vehicles** screen on desktop and worker view shows the map with **green / Available** and **red / Occupied** labels and counts. Select an occupied space to open its ticket. The map updates with the existing ticket refresh.
+
+A space remains occupied for **Parked**, **Requested**, and **Retrieving** tickets; **Ready for pickup** frees it because the car has moved to the pickup area. Check-in offers configured spaces, disables occupied choices, and rejects duplicate assignments on the server. With the map off, the existing free-text space field remains available. Existing tickets are preserved; active tickets outside the configured map display a notice and are excluded from map counts. Configure labels to match your current spaces before enabling it. This is a row-based space diagram, not an uploaded floor-plan editor or sensor integration.

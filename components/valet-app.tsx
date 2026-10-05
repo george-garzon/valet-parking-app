@@ -1,4 +1,5 @@
 'use client';
+import ParkingMap from './parking-map';
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -122,7 +123,7 @@ export default function ValetApp({ worker = false }: { worker?: boolean }) {
         </div><section className="panel vehicle-panel"><div className="panel-heading"><div><h2>Recent vehicles</h2><p>Every ticket, from arrival to pickup</p></div><button className="text-button" onClick={() => navigate('vehicles')}>View all vehicles <Icon name="arrow" /></button></div><TicketTable tickets={tickets.slice(0, 5)} open={setSelected} /></section>
         <div className="help-strip"><span><Icon name="key" /><strong>Ready for your next arrival?</strong> Check in a car to create its digital guest ticket.</span>{tickets.length === 0 ? <button className="text-button" disabled={seeding} onClick={seedDemo}>{seeding ? 'Saving samples…' : 'Try sample vehicles →'}</button> : <span className="muted">Records are saved on this computer</span>}</div>
       </>}
-      {view === 'vehicles' && <><Heading eyebrow="VEHICLE MANAGEMENT" title="Every vehicle. Accounted for." description="Find tickets, track keys, and follow each vehicle through pickup." action={intakeButton} /><VehicleInventory tickets={tickets} open={setSelected} /></>}
+      {view === 'vehicles' && <><Heading eyebrow="VEHICLE MANAGEMENT" title="Every vehicle. Accounted for." description="Find tickets, track keys, and follow each vehicle through pickup." action={intakeButton} /><ParkingMap tickets={tickets} open={setSelected} /><VehicleInventory tickets={tickets} open={setSelected} /></>}
       {view === 'employee' && <><Heading eyebrow="EMPLOYEE STATION" title="Great service starts here." description="Check in a vehicle, record its condition, and manage guest requests." action={<Link className="button secondary" href="/worker"><Icon name="grid" />Open worker view</Link>} /><EmployeeStation requests={requests} vehicles={tickets} saved={saved} advance={advance} pending={pending} /></>}
       {view === 'guest' && <><Heading eyebrow="GUEST EXPERIENCE" title="Your car, a tap away." description="Preview the guest experience using a private link from a saved ticket." /><div id="guest-content"><GuestView token="" notify={notify} /></div></>}
     </main><footer>{business.brandName} valet operations <span>{business.businessName} · Local prototype</span></footer></div>

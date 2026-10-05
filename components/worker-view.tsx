@@ -1,4 +1,5 @@
 'use client';
+import ParkingMap from './parking-map';
 
 import Link from 'next/link';
 import { useState } from 'react';
@@ -61,6 +62,7 @@ export default function WorkerView({ task, tickets, open, saved, advance, pendin
       <Link className="worker-desktop-link" href="/?view=dashboard">Open desktop dashboard <Icon name="arrow" /></Link>
     </> : <>
       <div className="worker-task-title"><Link href="/worker" className="worker-home-button" aria-label="All actions"><Icon name="grid" /></Link><h1>{taskTitles[task]}</h1></div>
+      {task === 'vehicles' && <ParkingMap tickets={tickets} open={open} />}
       {task === 'checkin' ? <EmployeeStation intakeOnly requests={[]} vehicles={tickets} saved={saved} advance={advance} pending={pending} /> : <WorkerVehicles key={task} tickets={tickets} task={task} open={open} advance={advance} pending={pending} />}
       <nav className="worker-bottom-nav" aria-label="Worker navigation"><Link href="/worker"><Icon name="grid" /><span>Actions</span></Link>{tiles.map(tile => <Link key={tile.task} href={`/worker?task=${tile.task}`} aria-current={task === tile.task ? 'page' : undefined}><Icon name={tile.icon} /><span>{tile.label}</span></Link>)}</nav>
     </>}

@@ -8,7 +8,6 @@ import { api, errorMessage } from '@/lib/client-api';
 import { money, ticketNumber, type GuestTicket, type Status } from '@/lib/types';
 import { useBusiness } from './business-provider';
 import TicketQr from './ticket-qr';
-import RequestCar from './request-car';
 
 const messages: Record<Status, [string, string]> = {
   parked: ['Ready when you are.', 'Request your vehicle when you’re ready to leave. Your valet will receive your request.'],
@@ -79,13 +78,19 @@ export default function GuestView({ token, notify }: { token: string; notify: (m
   if (error) return <section className="guest-card"><h2>Ticket unavailable</h2><p role="alert">{error}</p></section>;
   if (!ticket) return <section className="guest-card">Loading your ticket…</section>;
   const t = ticket, step = ['parked', 'requested', 'retrieving', 'ready', 'completed'].indexOf(t.status);
-  return <section className="guest-card"><div className="eyebrow">{business.businessName.toUpperCase()}</div><h1>Hello, {t.guest.split(' ')[0]}.</h1><p>Your vehicle is in good hands.</p><div className="guest-car"><Icon name="car" /></div><h2>{t.make} {t.model}</h2><p>{t.color} <span>·</span> <span className="plate">{t.plate}</span></p><Badge status={t.status} />
-    <div className="guest-summary guest-summary-with-qr"><span>Digital ticket<strong>{ticketNumber(t.id)}</strong>{business.businessType === 'hotel' && t.room_number && <span className="linked-room">Linked to Room # {t.room_number}</span>}</span><TicketQr id={t.id} token={t.token} /><span>Parking rate<strong>{money(t.rate)}</strong></span></div>
-    <div className="progress-track">{['Checked in', 'Requested', 'Retrieving', 'Ready', 'Collected'].map((label, i) => <div key={label} className={i <= step ? 'done' : ''}><i>{i <= step ? '✓' : i + 1}</i><small>{label}</small></div>)}</div>
-    <div className="guest-message"><strong>{messages[t.status][0]}</strong><p>{t.status === 'retrieving' ? `Please make your way to ${business.pickupLocation}.` : t.status === 'ready' ? `Meet your valet at ${business.pickupLocation} for your keys.` : messages[t.status][1]}</p></div>
-    {t.payment?.paid && <p className="payment-confirmed">Paid {money(t.payment.total)}{t.payment.tip > 0 && ` · Includes ${money(t.payment.tip)} tip`}</p>}
-    {t.status === 'parked' && <div className="guest-request-wrap"><button type="button" className="guest-request-button" title="Request" disabled={busy} onClick={() => { setCheckoutError(''); if (business.paymentsEnabled && !t.payment?.paid) setCheckoutOpen(true); else void request(); }}><span className="request-car-circle"><RequestCar /></span><span>{busy ? 'Please wait…' : 'Request'}</span></button></div>}
-    {checkoutOpen && t.status === 'parked' && <div className="guest-checkout" role="region" aria-label="Payment and vehicle request">
+  const checkoutActive = checkoutOpen && t.status === 'parked';
+  const showDetails = t.status === 'parked' && !checkoutActive;
+  const showQr = t.status === 'parked' || t.status === 'ready';
+  return <section className="guest-card guest-ticket" aria-label="Guest valet ticket">
+    <header className="guest-ticket-header"><div><div className="eyebrow">{business.businessName}</div><h1>Valet ticket</h1></div><div className="guest-ticket-number"><small>Ticket no.</small><strong>{ticketNumber(t.id)}</strong></div></header>
+    <div className="guest-vehicle-row"><div><h2>{t.make} {t.model}</h2><p>{t.color} <span>·</span> <span className="plate">{t.plate}</span></p></div><Badge status={t.status} /></div>
+    {(showDetails || (showQr && !checkoutActive)) && <div className="guest-summary guest-summary-with-qr"><span>{showDetails && <>Guest<strong>{t.guest}</strong></>}{business.businessType === 'hotel' && t.room_number && <span className="linked-room">Linked to Room # {t.room_number}</span>}{t.status === 'ready' && <strong>Show at pickup</strong>}</span>{showDetails && <span>Parking rate<strong>{money(t.rate)}</strong></span>}{showQr && <TicketQr id={t.id} token={t.token} />}</div>}
+    {!checkoutActive && t.status !== 'completed' && <ol className="progress-track" aria-label="Vehicle pickup progress">{['Checked in', 'Requested', 'Retrieving', 'Ready', 'Collected'].map((label, i) => <li key={label} aria-current={i === step ? 'step' : undefined} className={i <= step ? 'done' : ''}><i aria-hidden="true">{i < step ? '✓' : i + 1}</i><small>{label}</small></li>)}</ol>}
+    {!checkoutActive && <div className="guest-message" role="status"><strong>{messages[t.status][0]}</strong><p>{t.status === 'retrieving' ? `Please make your way to ${business.pickupLocation}.` : t.status === 'ready' ? `Meet your valet at ${business.pickupLocation} for your keys.` : messages[t.status][1]}</p></div>}
+    {t.payment?.paid && (t.status === 'parked' || t.status === 'completed') && <p className="payment-confirmed">Paid {money(t.payment.total)}{t.payment.tip > 0 && ` · Includes ${money(t.payment.tip)} tip`}</p>}
+    {showDetails && <div className="guest-request-wrap"><button type="button" className="button primary full" disabled={busy} onClick={() => { setCheckoutError(''); if (business.paymentsEnabled && !t.payment?.paid) setCheckoutOpen(true); else void request(); }}>{busy ? 'Please wait…' : 'Request vehicle'}</button></div>}
+    {!checkoutActive && checkoutError && t.status === 'parked' && <p className="form-error" role="alert">{checkoutError}</p>}
+    {checkoutActive && <div className="guest-checkout" role="region" aria-label="Payment and vehicle request">
       <h3>Request your vehicle</h3><p>Parking fee <strong>{money(t.rate)}</strong></p>
       {business.tipsEnabled && !t.payment && <><label className="field">Leave a tip <span className="muted">Optional</span><input aria-label="Tip amount in dollars" type="number" min="0" max="1000" step="0.01" value={tip} onChange={e => setTip(e.target.value)} /></label><div className="tip-presets">{[0, ...business.tipPresets].map(c => <button type="button" key={c} aria-pressed={Number(tip) * 100 === c} onClick={() => setTip(String(c / 100))}>{c === 0 ? 'No tip' : money(c)}</button>)}</div></>}
       {t.payment && <p>Your checkout includes a {money(t.payment.tip)} tip. Continue to complete payment.</p>}
@@ -97,6 +102,6 @@ export default function GuestView({ token, notify }: { token: string; notify: (m
       <button className="checkout-back" disabled={busy} onClick={() => setCheckoutOpen(false)}>Back to ticket</button>
     </div>}
     {refreshError && <p className="form-error" role="alert">Unable to refresh status. Retrying shortly.</p>}
-    <p className="guest-payment">If you need help requesting your vehicle, please proceed to {business.pickupLocation}.</p>
+    {showDetails && <p className="guest-payment">Need help? Visit {business.pickupLocation}.</p>}
   </section>;
 }

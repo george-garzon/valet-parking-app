@@ -5,6 +5,7 @@ import Icon from './icon';
 import { Badge } from './ticket-table';
 import { actionLabels, money, ticketNumber, type Ticket } from '@/lib/types';
 import { useBusiness } from './business-provider';
+import VehiclePhotos from './vehicle-photos';
 import GuestMessagePanel from './guest-message-panel';
 
 export default function TicketDialog({ ticket: t, close, advance, pending, notify }: {
@@ -26,6 +27,7 @@ export default function TicketDialog({ ticket: t, close, advance, pending, notif
     {business.businessType === 'hotel' && t.room_number && <p className="linked-room">Linked to Room # {t.room_number}</p>}
     <dl className="ticket-details">{[['Guest', t.guest], ['Phone', t.phone], ['Parking space', t.space], ['Key tag', t.key_tag], ['Attendant', t.attendant], ['Parking type', t.type], ['Ticket rate', money(t.rate)], ['Payment', t.payment?.paid ? `Paid ${money(t.payment.total)} · Tip ${money(t.payment.tip)}` : 'Not paid online'], ['Arrival', new Date(t.created_at).toLocaleString('en-US', { timeZone: business.timeZone })]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     <div className="condition"><strong>Condition & notes</strong><p>{t.notes || 'No condition notes recorded.'}</p></div>
+    {business.vehiclePhotosEnabled && <VehiclePhotos ticket={t} />}
     <GuestMessagePanel ticket={t} notify={notify} />
     <div className="guest-link"><strong>Guest ticket link</strong><p>Share this private link with the guest. Anyone with it can view this ticket and request the vehicle.</p><div><input ref={input} aria-label="Guest ticket link" readOnly value={link} /><button className="button secondary" onClick={copy}>Copy</button></div><a href={link} target="_blank" rel="noopener noreferrer">Open guest ticket ↗</a></div>
     {t.status !== 'completed' && <button className="button primary full" disabled={pending === t.id} onClick={() => advance(t)}>{actionLabels[t.status]} <Icon name="arrow" /></button>}
